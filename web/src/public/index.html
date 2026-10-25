@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hệ thống Quản lý Thư viện | Cấn Văn Thái - DTC245200867</title>
+  <link rel="stylesheet" href="/styles/main.css" />
+</head>
+<body>
+  <!-- THANH NAVBAR TRÊN CÙNG -->
+  <nav class="navbar">
+    <div class="nav-left">
+      <a onclick="switchTab('home')" style="cursor:pointer" class="brand-logo">📚 LibrarySystem</a>
+      <span class="student-badge">SV: Cấn Văn Thái • DTC245200867 • CNTT-K23C</span>
+      <div class="nav-links">
+        <a id="nav-home" class="active-nav" onclick="switchTab('home')">🏠 Trang chủ</a>
+        <a id="nav-books" onclick="switchTab('books')">📖 Quản lý Sách</a>
+        <a id="nav-loans" onclick="switchTab('loans')">🔄 Mượn / Trả</a>
+        <a id="nav-readers" onclick="switchTab('readers')">👤 Độc giả</a>
+      </div>
+    </div>
+
+    <div class="nav-right" id="auth-guest-area">
+      <button class="btn-outline" onclick="openAuthModal('login')">Đăng nhập</button>
+      <button class="btn-solid" onclick="openAuthModal('register')">Đăng ký</button>
+    </div>
+
+    <div class="nav-right" id="auth-user-area" style="display:none;">
+      <span class="user-chip" id="current-user-label">🟢 Cấn Văn Thái</span>
+      <button class="btn-danger-outline" onclick="handleLogout()">Đăng xuất</button>
+    </div>
+  </nav>
+
+  <!-- BANNER CHÍNH -->
+  <section class="hero-banner">
+    <h1>Hệ Thống Quản Lý Thư Viện Số ICTU</h1>
+    <p>Đề tài 1: Ứng dụng Web Quản lý Sách, Độc giả & Mượn/Trả sách — Tích hợp PostgreSQL, pgAdmin, Nginx HTTPS Reverse Proxy, Prometheus, Grafana & Loki LogQL.</p>
+    <div class="hero-actions">
+      <button class="hero-btn" onclick="switchTab('home')">📚 Khám Phá Kệ Sách</button>
+      <button class="hero-btn-alt" onclick="switchTab('loans')">📝 Lập Phiếu Mượn Sách</button>
+      <a class="hero-btn-alt" href="/health" target="_blank">🩺 Health Check</a>
+      <a class="hero-btn-alt" href="/metrics" target="_blank">📈 Prometheus Metrics</a>
+      <button class="hero-btn-alt" style="background:rgba(220,38,38,0.85);border-color:#f87171;" onclick="triggerLokiError()">⚡ Test HTTP 500 (Loki LogQL)</button>
+    </div>
+  </section>
+
+  <div class="container">
+    <!-- Thống kê tổng quan -->
+    <div class="stats-grid">
+      <div class="stat-card" onclick="switchTab('home')" style="cursor:pointer">
+        <span class="stat-label">Đầu sách / Tổng bản in</span>
+        <div class="stat-value" id="stat-books">0 / 0</div>
+        <span class="stat-sub">Sẵn sàng cho mượn: <strong id="stat-avail">0</strong> cuốn</span>
+      </div>
+      <div class="stat-card" onclick="switchTab('readers')" style="cursor:pointer">
+        <span class="stat-label">Độc giả đăng ký</span>
+        <div class="stat-value" id="stat-readers">0</div>
+        <span class="stat-sub">Thẻ thư viện đang hoạt động</span>
+      </div>
+      <div class="stat-card" onclick="switchTab('loans')" style="cursor:pointer">
+        <span class="stat-label">Phiếu đang mượn</span>
+        <div class="stat-value" id="stat-active-loans">0</div>
+        <span class="stat-sub">Quá hạn: <strong id="stat-overdue" style="color:var(--danger)">0</strong> phiếu</span>
+      </div>
+      <div class="stat-card" onclick="switchTab('loans')" style="cursor:pointer">
+        <span class="stat-label">Đã hoàn trả</span>
+        <div class="stat-value" id="stat-returned" style="color:var(--success)">0</div>
+        <span class="stat-sub">Lịch sử giao dịch hoàn tất</span>
+      </div>
+    </div>
+
+    <!-- Thanh điều hướng Tab -->
+    <div class="tabs">
+      <button id="tabbtn-home" class="tab-btn active" onclick="switchTab('home')">🏠 Trang chủ Thư viện</button>
+      <button id="tabbtn-books" class="tab-btn" onclick="switchTab('books')">📖 Quản lý Sách</button>
+      <button id="tabbtn-loans" class="tab-btn" onclick="switchTab('loans')">🔄 Mượn / Trả Sách</button>
+      <button id="tabbtn-readers" class="tab-btn" onclick="switchTab('readers')">👤 Quản lý Độc giả</button>
+    </div>
+
+    <!-- ==================== TAB 0: TRANG CHỦ THƯ VIỆN ==================== -->
+    <div id="tab-home" class="home-panel active">
+      <!-- Thanh tìm kiếm & lọc thể loại trên Trang chủ -->
+      <div class="home-filter-bar">
+        <div class="home-search-wrap">
+          <input
+            type="text"
+            id="home-search-input"
+            class="home-search-input"
+            placeholder="🔍 Tìm kiếm nhanh đầu sách, tác giả hoặc chủ đề học phần..."
+            oninput="renderHomeCatalog()"
+          />
+        </div>
+        <div class="category-pills" id="home-category-pills">
+          <button class="cat-pill active" onclick="selectHomeCategory('ALL', this)">Tất cả sách</button>
+          <button class="cat-pill" onclick="selectHomeCategory('Lập trình', this)">💻 Lập trình</button>
+          <button class="cat-pill" onclick="selectHomeCategory('Cơ sở dữ liệu', this)">🗄️ Cơ sở dữ liệu</button>
+          <button class="cat-pill" onclick="selectHomeCategory('DevOps & Cloud', this)">🐳 DevOps & Cloud</button>
+          <button class="cat-pill" onclick="selectHomeCategory('DevSecOps', this)">📊 DevSecOps</button>
+          <button class="cat-pill" onclick="selectHomeCategory('An toàn thông tin', this)">🛡️ An toàn thông tin</button>
+        </div>
+      </div>
+
+      <!-- Kệ sách trực quan dạng Card Grid -->
+      <div class="section-header">
+        <h2>📚 Kệ Sách Học Tập & Nghiên Cứu Nổi Bật</h2>
+        <span class="section-count" id="home-book-count">Hiển thị 0 đầu sách</span>
+      </div>
+      <div class="book-showcase-grid" id="home-books-grid"></div>
+
+      <!-- Khối quy trình mượn sách & Hoạt động gần đây -->
+      <div class="home-bottom-grid">
+        <div class="card">
+          <h2>📌 Quy Trình Mượn / Trả Sách Tại Thư Viện</h2>
+          <div class="steps-list">
+            <div class="step-item">
+              <div class="step-num">1</div>
+              <div>
+                <strong>Đăng ký Thẻ Độc Giả</strong>
+                <p>Sinh viên cung cấp Họ tên, Email và Mã số sinh viên (VD: <code>DTC245200867</code>) để cấp thẻ.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">2</div>
+              <div>
+                <strong>Chọn Sách Trên Trang Chủ & Lập Phiếu Mượn</strong>
+                <p>Bấm nút <em>"Mượn ngay"</em> trên bìa sách bất kỳ, hệ thống tự động trừ tồn kho trong PostgreSQL.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">3</div>
+              <div>
+                <strong>Hoàn Trả Sách & Giám Sát Tập Trung</strong>
+                <p>Xác nhận trả sách với 1 cú nhấp chuột; mọi giao dịch được ghi log sang Loki & đo lường trên Grafana.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>🕒 Giao Dịch Mượn / Trả Gần Đây Nhất</h2>
+          <div style="overflow-x:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Mã</th>
+                  <th>Đầu sách</th>
+                  <th>Độc giả</th>
+                  <th>Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody id="home-recent-loans"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- CTA Banner màu xanh giữa trang giống mẫu chuẩn -->
+      <div class="cta-banner">
+        <h2>Bạn Là Sinh Viên Muốn Mượn Sách Học Tập & Nghiên Cứu?</h2>
+        <p>Đăng ký thẻ độc giả thư viện hoàn toàn miễn phí và tiếp cận kho giáo trình Công nghệ thông tin, Lập trình, DevOps & An toàn mạng ngay hôm nay.</p>
+        <div class="cta-actions">
+          <button class="cta-btn-white" onclick="switchTab('readers')">🪪 Đăng Ký Thẻ Độc Giả Ngay</button>
+          <button class="cta-btn-outline" onclick="switchTab('books')">➕ Thêm Sách Mới Vào Kho</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 1: QUẢN LÝ SÁCH ==================== -->
+    <div id="tab-books" class="tab-panel">
+      <div class="card">
+        <h2>➕ Thêm Sách Mới</h2>
+        <form onsubmit="handleAddBook(event)">
+          <div class="form-group">
+            <label>Tên sách *</label>
+            <input type="text" id="book-title" required placeholder="VD: Kiến trúc Microservices" />
+          </div>
+          <div class="form-group">
+            <label>Tác giả *</label>
+            <input type="text" id="book-author" required placeholder="VD: Nguyễn Văn A" />
+          </div>
+          <div class="form-group">
+            <label>Thể loại</label>
+            <select id="book-category">
+              <option value="Công nghệ thông tin">Công nghệ thông tin</option>
+              <option value="Lập trình">Lập trình</option>
+              <option value="Cơ sở dữ liệu">Cơ sở dữ liệu</option>
+              <option value="DevOps & Cloud">DevOps & Cloud</option>
+              <option value="DevSecOps">DevSecOps</option>
+              <option value="An toàn thông tin">An toàn thông tin</option>
+              <option value="Khoa học dữ liệu">Khoa học dữ liệu</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Số lượng bản in *</label>
+            <input type="number" id="book-quantity" value="3" min="1" max="100" required />
+          </div>
+          <button type="submit" class="btn btn-primary">Lưu vào Kho Sách</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <h2 style="border:none;margin:0;padding:0">📋 Danh Mục Sách Trong Thư Viện</h2>
+          <input type="text" id="search-book" class="search-input" placeholder="🔍 Tìm theo tên sách, tác giả, thể loại..." oninput="loadBooks()" />
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Mã</th>
+                <th>Tên sách</th>
+                <th>Tác giả</th>
+                <th>Thể loại</th>
+                <th>Kho / Còn</th>
+                <th>Trạng thái</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="books-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 2: MƯỢN / TRẢ SÁCH ==================== -->
+    <div id="tab-loans" class="tab-panel">
+      <div class="card">
+        <h2>📝 Lập Phiếu Mượn Sách</h2>
+        <form onsubmit="handleCreateLoan(event)">
+          <div class="form-group">
+            <label>Chọn sách cần mượn *</label>
+            <select id="loan-book-id" required></select>
+          </div>
+          <div class="form-group">
+            <label>Chọn độc giả mượn *</label>
+            <select id="loan-reader-id" required></select>
+          </div>
+          <div class="form-group">
+            <label>Số ngày mượn *</label>
+            <input type="number" id="loan-days" value="14" min="1" max="60" required />
+          </div>
+          <button type="submit" class="btn btn-primary">Xác Nhận Cho Mượn</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>📑 Danh Sách Phiếu Mượn / Trả Sách</h2>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Mã phiếu</th>
+                <th>Tên sách</th>
+                <th>Độc giả</th>
+                <th>Ngày mượn</th>
+                <th>Hạn trả</th>
+                <th>Trạng thái</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="loans-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 3: QUẢN LÝ ĐỘC GIẢ ==================== -->
+    <div id="tab-readers" class="tab-panel">
+      <div class="card">
+        <h2>👤 Đăng Ký Thẻ Độc Giả</h2>
+        <form onsubmit="handleAddReader(event)">
+          <div class="form-group">
+            <label>Họ và tên độc giả *</label>
+            <input type="text" id="reader-name" required placeholder="VD: Trần Minh Khôi" />
+          </div>
+          <div class="form-group">
+            <label>Email sinh viên / cá nhân *</label>
+            <input type="email" id="reader-email" required placeholder="VD: khoi.tm@ictu.edu.vn" />
+          </div>
+          <div class="form-group">
+            <label>Số điện thoại *</label>
+            <input type="text" id="reader-phone" required placeholder="VD: 0912345678" />
+          </div>
+          <div class="form-group">
+            <label>Mã thẻ thư viện (Để trống tự sinh)</label>
+            <input type="text" id="reader-card" placeholder="VD: DTC245200867" />
+          </div>
+          <button type="submit" class="btn btn-primary">Cấp Thẻ Thư Viện</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>🪪 Danh Sách Độc Giả</h2>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Mã thẻ</th>
+                <th>Họ và tên</th>
+                <th>Email</th>
+                <th>Điện thoại</th>
+                <th>Đang mượn</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="readers-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL ĐĂNG NHẬP -->
+  <div class="modal-backdrop" id="modal-login">
+    <div class="modal-box">
+      <button class="modal-close" onclick="closeAuthModal()">✕</button>
+      <h3>🔐 Đăng nhập Hệ thống</h3>
+      <p class="modal-sub">Đăng nhập với quyền Quản trị viên / Thủ thư</p>
+      <div class="demo-account-hint">
+        💡 <strong>Tài khoản mặc định:</strong> <code>admin</code> hoặc <code>dtc245200867</code> | <strong>Mật khẩu:</strong> <code>123</code>
+      </div>
+      <form onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>Tên đăng nhập *</label>
+          <input type="text" id="login-username" value="admin" required placeholder="Nhập tài khoản..." />
+        </div>
+        <div class="form-group">
+          <label>Mật khẩu *</label>
+          <input type="password" id="login-password" value="123" required placeholder="Nhập mật khẩu..." />
+        </div>
+        <button type="submit" class="btn btn-primary">Đăng Nhập Ngay</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL ĐĂNG KÝ -->
+  <div class="modal-backdrop" id="modal-register">
+    <div class="modal-box">
+      <button class="modal-close" onclick="closeAuthModal()">✕</button>
+      <h3>📝 Đăng ký Tài khoản</h3>
+      <p class="modal-sub">Tạo tài khoản Thủ thư / Độc giả mới trên hệ thống</p>
+      <form onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label>Họ và tên *</label>
+          <input type="text" id="reg-fullname" required placeholder="VD: Cấn Văn Thái" />
+        </div>
+        <div class="form-group">
+          <label>Tên đăng nhập (Username / MSSV) *</label>
+          <input type="text" id="reg-username" required placeholder="VD: dtc245200867" />
+        </div>
+        <div class="form-group">
+          <label>Mật khẩu *</label>
+          <input type="password" id="reg-password" required placeholder="Nhập mật khẩu..." />
+        </div>
+        <button type="submit" class="btn btn-primary">Tạo Tài Khoản & Đăng Nhập</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- FOOTER THÔNG TIN ĐỀ TÀI & SINH VIÊN -->
+  <footer>
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>📚 LibrarySystem DevSecOps</h4>
+        <p>Hệ thống Quản lý Thư viện trực tuyến (Quản lý Sách, Độc giả, Mượn/Trả sách), tích hợp giám sát toàn diện Prometheus, Grafana, Loki và Nginx Reverse Proxy bảo mật.</p>
+        <div class="security-badge">🛡️ HTTPS SSL / Security Hardened</div>
+      </div>
+
+      <div class="footer-col">
+        <h4>Thông tin Đề tài & Sinh viên</h4>
+        <p><strong>Đề tài:</strong> Đề 1 - Hệ thống Quản lý Thư viện</p>
+        <p><strong>Sinh viên thực hiện:</strong> CẤN VĂN THÁI</p>
+        <p><strong>Mã số sinh viên (MSSV):</strong> DTC245200867</p>
+        <p><strong>Lớp:</strong> CNTT-K23C</p>
+        <p><strong>Học phần:</strong> Triển khai và Quản trị Hệ thống Phần mềm</p>
+        <p><strong>Trường:</strong> ĐH Công nghệ Thông tin & Truyền thông - ĐH Thái Nguyên (2026)</p>
+      </div>
+
+      <div class="footer-col">
+        <h4>Liên kết Nhanh & Hạ tầng</h4>
+        <ul class="footer-links">
+          <li><a onclick="switchTab('home')" style="cursor:pointer">› Trang chủ Khám phá Kệ Sách</a></li>
+          <li><a onclick="switchTab('loans')" style="cursor:pointer">› Nghiệp vụ Mượn / Trả Sách</a></li>
+          <li><a href="http://localhost:5050" target="_blank">🗄️ pgAdmin 4 (Quản trị PostgreSQL - Port 5050)</a></li>
+          <li><a href="http://localhost:9090" target="_blank">🔥 Prometheus Metrics (Port 9090)</a></li>
+          <li><a href="http://localhost:3001" target="_blank">📊 Grafana Monitoring & Loki LogQL (Port 3001)</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <div>© 2026 LibrarySystem DevOps. Bản quyền thuộc về sinh viên Cấn Văn Thái (DTC245200867 - CNTT-K23C).</div>
+      <div class="tech-tags">
+        <span class="tech-tag">Node.js 22</span>
+        <span class="tech-tag">PostgreSQL 17 + pgAdmin</span>
+        <span class="tech-tag">Nginx Reverse Proxy</span>
+        <span class="tech-tag">Prometheus & Loki</span>
+      </div>
+    </div>
+  </footer>
+
+  <div id="toast"></div>
+
+  <script src="/utils/formatters.js"></script>
+  <script src="/services/api.js"></script>
+  <script src="/main.js"></script>
+</body>
+</html>

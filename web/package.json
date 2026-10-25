@@ -1,0 +1,13 @@
+{
+  "name": "hethong-quan-ly-thu-vien",
+  "version": "1.0.0",
+  "description": "Ung dung quan ly thu vien",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  }
+}
